@@ -1,0 +1,19 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "pxrad"
+version = "0.0.0"
+description = "Polychromatic X-ray diffraction simulation and analysis toolkit"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [
+  {name = "Your Name", email = "you@example.com"}
+]
+dependencies = [
+  "numpy",
+  "pandas",
+  "numba",
+]
