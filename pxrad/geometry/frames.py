@@ -1,8 +1,10 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum, auto
 import numpy as np
+
+from pxrad.utils.linalg import vec3, unit
 
 # Finite set of geometry modes
 class GeometryMode(Enum):
@@ -12,26 +14,6 @@ class GeometryMode(Enum):
     BACK_REFLECTION   = auto()
     BOTTOM_REFLECTION = auto()
     CUSTOM            = auto()
-    
-
-############################
-# LINEAR ALGEBRA UTILITIES
-############################
-    
-def _vec3(v) -> np.ndarray:
-    v = np.asarray(v, dtype=float)
-    if v.shape != (3,):
-        raise ValueError(f"Expected a 3-vector with shape (3,), got {v.shape}")
-    return v
-
-
-def unit(v, *, eps: float = 1e-15) -> np.ndarray:
-    """Return v normalized to unit length"""
-    v = np.asarray(v, dtype=float)
-    n = float(np.linalg.norm(v))
-    if n < eps:
-        raise ValueError("Cannot normalize a near-zero vector")
-    return v / n
 
 
 def ensure_right_handed(z_hat, x_hint) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -42,8 +24,8 @@ def ensure_right_handed(z_hat, x_hint) -> tuple[np.ndarray, np.ndarray, np.ndarr
 
     Convention is FIXED: y = z × x.
     """
-    z = unit(_vec3(z_hat))
-    xh = _vec3(x_hint)
+    z = unit(vec3(z_hat))
+    xh = vec3(x_hint)
 
     # Make x perpendicular to z (Gram–Schmidt step)
     x = xh - np.dot(xh, z) * z
@@ -78,7 +60,7 @@ class LabFrame:
         # TOP_REFLECTION GeometryMode:
         # +z is the direction source -> sample
         # +x is the direction sample -> detector
-        z_hat = np.array([0.0, 0.0, 1.0])
+        z_hat  = np.array([0.0, 0.0, 1.0])
         x_hint = np.array([1.0, 0.0, 0.0])
         x, y, z = ensure_right_handed(z_hat=z_hat, x_hint=x_hint)
         return cls(x_hat=x, y_hat=y, z_hat=z)
@@ -118,7 +100,7 @@ LAB_FRAME.validate()
 # Geometry class
 ############################
 
-def det_dir_from_mode(mode: GeometryMode, custom_det_dir: np.ndarray | None = None) -> np.ndarray:
+def _det_dir_from_mode(mode: GeometryMode, custom_det_dir: np.ndarray | None = None) -> np.ndarray:
     """
     Unit vector pointing from sample -> detector in the fixed lab frame.
     If mode is CUSTOM, det_dir must be provided.
@@ -134,41 +116,55 @@ def det_dir_from_mode(mode: GeometryMode, custom_det_dir: np.ndarray | None = No
     if mode is GeometryMode.CUSTOM:
         if custom_det_dir is None:
             raise ValueError("GeometryMode.CUSTOM requires det_dir (a 3-vector in LAB_FRAME).")
-        return unit(_vec3(custom_det_dir))
+        return unit(vec3(custom_det_dir))
     raise ValueError(f"Unhandled mode: {mode!r}")
 
 @dataclass(frozen=True, slots=True)
 class Geometry:
     """
-    Geometry configuration.
+    Experiment geometry in the lab frame (x,y,z).
 
-    For now it stores only the placement mode. The lab frame is global (LAB_FRAME).
-    Later I'll likely add: detector distance, roll/tilt, offsets, etc.
+    mode:
+    beam_dir: unit vector (source -> sample) in LAB_FRAME
+    det_dir : unit vector (sample -> detector center) in LAB_FRAME
+
+    Rules:
+      - If mode == CUSTOM, det_dir must be provided.
+      - If mode != CUSTOM, det_dir must NOT be provided (it is derived from mode).
     """
     mode: GeometryMode
-    custom_det_dir: np.ndarray | None = None
-    
+    beam_dir: np.ndarray = field(default_factory=lambda: LAB_FRAME.z_hat.copy())
+    det_dir: np.ndarray | None = None  # only allowed/required for CUSTOM
+
     def __post_init__(self):
-        if self.mode is GeometryMode.CUSTOM and self.custom_det_dir is None:
-            raise ValueError("Geometry(mode=CUSTOM) requires custom_det_dir.")
-        if self.custom_det_dir is not None:
-            _vec3(self.custom_det_dir)
-    
-    @property
-    def det_dir(self) -> np.ndarray:
-        return det_dir_from_mode(self.mode, self.custom_det_dir)
-    
+        # Normalize beam_dir (always)
+        bd = unit(vec3(self.beam_dir))
+        object.__setattr__(self, "beam_dir", bd)
+
+        # Resolve det_dir depending on mode
+        if self.mode is GeometryMode.CUSTOM:
+            if self.det_dir is None:
+                raise ValueError("mode=CUSTOM requires det_dir (a 3-vector in LAB_FRAME).")
+            dd = unit(vec3(self.det_dir))
+        else:
+            if self.det_dir is not None:
+                raise ValueError("det_dir is only allowed when mode=CUSTOM.")
+            dd = unit(_det_dir_from_mode(self.mode))
+
+        object.__setattr__(self, "det_dir", dd)
+
     @property
     def frame(self) -> LabFrame:
         # convenient accessor; still a single global frame
         return LAB_FRAME
-    
+
     def describe(self) -> str:
         return (
-            f"Geometry("
+            "Geometry("
             f"\n    mode={self.mode.name},"
-            f"\n    det_dir={self.det_dir.tolist()}, "
-            f"\n    z_hat={self.frame.z_hat.tolist()}, "
-            f"\n    x_hat={self.frame.x_hat.tolist()}, "
+            f"\n    det_dir={self.det_dir.tolist()},"
+            f"\n    beam_dir={self.beam_dir.tolist()},"
+            f"\n    z_hat={self.frame.z_hat.tolist()},"
+            f"\n    x_hat={self.frame.x_hat.tolist()},"
             f"\n    y_hat={self.frame.y_hat.tolist()}\n)"
         )
