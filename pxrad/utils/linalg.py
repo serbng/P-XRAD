@@ -22,10 +22,51 @@ def ensure_finite(v, name="vector") -> np.ndarray:
         raise ValueError(f"{name} must be finite.")
     return v
 
-def unit(v, *, eps: float = 1e-15) -> np.ndarray:
-    """Return v normalized to unit length"""
+def unit(v, *, axis: int = -1, eps: float = 1e-15) -> np.ndarray:
+    """
+    Strict normalization to unit length.
+
+    Works for shapes:
+      - (3,)
+      - (N, 3)
+      - (..., 3) in general (normalizes along `axis`, default last)
+
+    Raises ValueError if any vector norm is < eps.
+    """
     v = np.asarray(v, dtype=float)
-    n = float(np.linalg.norm(v))
-    if n < eps:
-        raise ValueError("Cannot normalize a near-zero vector")
+    n = np.linalg.norm(v, axis=axis, keepdims=True)
+    if np.any(n < eps):
+        raise ValueError(f"Cannot normalize vector(s) with norm < {eps}.")
     return v / n
+
+def normalize(v: np.ndarray, *, axis: int = -1, eps: float = 1e-15) -> np.ndarray:
+    """
+    Normalize vectors to unit length.
+
+    Works with shapes:
+      - (3,)
+      - (N, 3)
+      - (..., 3) in general (normalizes along `axis`, default last).
+
+    Parameters
+    ----------
+    v : array_like
+        Input vector(s).
+    axis : int
+        Axis along which to compute the norm (default: -1).
+    eps : float
+        Small value to avoid division by zero.
+
+    Returns
+    -------
+    out : np.ndarray
+        Normalized vector(s) with same shape as input.
+
+    Notes
+    -----
+    If a vector has norm < eps, it is left unchanged (effectively divided by eps),
+    so the output magnitude may be ~0. If you prefer raising in that case, see below.
+    """
+    v = np.asarray(v, dtype=float)
+    n = np.linalg.norm(v, axis=axis, keepdims=True)
+    return v / np.maximum(n, eps)
