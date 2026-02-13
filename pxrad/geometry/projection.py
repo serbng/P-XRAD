@@ -1,22 +1,85 @@
 from __future__ import annotations
 from dataclasses import dataclass
+from typing import Tuple
 import numpy as np
+from numpy.typing import NDArray
 
 from pxrad.detectors.detector import Detector
-from pxrad.utils.linalg import vec2, vec3, unit, normalize
+from pxrad.utils.linalg import vec2, vec3, unit
+
+Vec3 = NDArray[np.floating] # intended shape (3,)
+Vec2 = NDArray[np.floating] # intended shape (2,)
+
 
 @dataclass(frozen=True)
 class DetectorPose:
-    det_dir: np.ndarray    # (3,) sample -> PONI (unit)
-    det_norm: np.ndarray   # (3,) plane normal (unit)
-    distance: float        # meters (|p_poni|)
-    spin: float            # radians
-    poni: np.ndarray       # (2,) meters in detector frame
+    """
+    Detector pose and PONI definition.
+
+    All vectors are expressed in the **lab frame** unless stated otherwise.
+
+    Parameters
+    ----------
+    det_dir : (3,) array_like
+        Unit vector in the lab frame pointing from sample (origin) to the PONI point.
+        After calibration, `det_dir` is intended to point exactly to the PONI.
+    det_norm : (3,) array_like
+        Unit normal vector of the detector plane in the lab frame.
+        Its sign is conventional (depending on your setup, d·n may be < 0 for all valid rays).
+    distance : float
+        Distance from sample to the PONI point, in meters. The PONI point in lab is:
+            p_poni = distance * det_dir
+    spin : float
+        In-plane rotation (radians) defining the detector x/y axes around `det_norm`.
+    poni : (2,) array_like
+        PONI offset expressed in the **detector frame**, in meters:
+        (poni_x, poni_y) is the location of the PONI relative to the pixel origin (0,0)
+        along the detector axes (ex, ey) returned by `det_basis_from_norm_spin`.
+
+        More precisely, if p_poni is the PONI point in lab and (ex, ey) are detector axes in lab,
+        then the pixel origin p00 in lab is:
+            p00 = p_poni - poni_x * ex - poni_y * ey
+    """
+    det_dir: Vec3   
+    det_norm: Vec3 
+    distance: float
+    spin: float    
+    poni: Vec2    
     
-    def poni_lab_frame(self) -> np.ndarray:
+    def poni_lab_frame(self) -> Vec3:
         return vec3(self.distance * unit(self.det_dir))
     
-def det_basis_from_norm_spin(det_norm, spin, ref_axis=np.array([0.0, 1.0, 0.0])):
+def det_basis_from_norm_spin(
+    det_norm: Vec3, 
+    spin: float, 
+    ref_axis: Vec3 = np.array([0.0, 1.0, 0.0])
+) -> Tuple[Vec3, Vec3, Vec3]:
+    """
+    Build an orthonormal detector basis (ex, ey, ez) in the lab frame.
+
+    The detector plane normal is `ez = unit(det_norm)`. A reference axis (default: lab y_hat)
+    is projected onto the detector plane to define a stable in-plane direction (ey0),
+    then a spin rotation around ez defines the final (ex, ey).
+
+    Parameters
+    ----------
+    det_norm : (3,) array_like
+        Detector plane normal in lab frame (does not need to be unit; it will be normalized).
+    spin : float
+        Rotation angle (radians) around ez. Defines the in-plane orientation of ex/ey.
+    ref_axis : (3,) array_like, optional
+        Reference lab axis used to define the in-plane "up" direction before applying spin.
+        If nearly parallel to det_norm, it is replaced by x_hat.
+
+    Returns
+    -------
+    ex : (3,) ndarray
+        Detector x axis expressed in the lab frame (unit vector, lies in detector plane).
+    ey : (3,) ndarray
+        Detector y axis expressed in the lab frame (unit vector, lies in detector plane).
+    ez : (3,) ndarray
+        Detector normal expressed in the lab frame (unit vector).
+    """
     n = unit(vec3(det_norm))
     a = unit(vec3(ref_axis))
     # If a and n are almost parallel, change ref_axis
@@ -33,7 +96,41 @@ def det_basis_from_norm_spin(det_norm, spin, ref_axis=np.array([0.0, 1.0, 0.0]))
     
     return ex, ey, n
 
-def intersection_ray_detector(ray_dir, poni, det_norm, *, eps: float = 1e-15):
+def intersection_ray_detector(
+    ray_dir: NDArray, 
+    poni: Vec3, 
+    det_norm: Vec3, 
+    *, 
+    eps: float = 1e-15
+) -> NDArray:
+    """
+    Intersect ray(s) from the sample origin with the detector plane.
+
+    The detector plane is defined by:
+      - a point on plane: `poni_lab` (PONI point in lab, meters)
+      - normal: `det_norm` (lab frame)
+
+    Each ray is defined by:
+        x(t) = t * d
+    with origin at the sample (0,0,0) and direction d (unit vector).
+
+    Parameters
+    ----------
+    ray_dir : (3,) or (N,3) array_like
+        Ray direction(s) in the lab frame. Will be normalized internally.
+    poni : (3,) array_like
+        Point on plane (PONI) in lab frame, meters.
+    det_norm : (3,) array_like
+        Plane normal in lab frame. Will be normalized internally.
+    eps : float, optional
+        Threshold for near-parallel rays: if |d·n| < eps, the intersection parameter t is set to NaN.
+
+    Returns
+    -------
+    P : (3,) or (N,3) ndarray
+        Intersection point(s) in the lab frame, meters.
+        For near-parallel rays, returns NaNs for those entries.
+    """
     n = unit(vec3(det_norm))
     d = unit(ray_dir)
     
@@ -47,11 +144,69 @@ def intersection_ray_detector(ray_dir, poni, det_norm, *, eps: float = 1e-15):
     
     return d * t[..., None] # result is in [m]
 
-def in_detector_bounds(u, v, shape):
+def in_detector_bounds(u: NDArray, v: NDArray, shape: Tuple[int, int]) -> NDArray[np.bool]:
+    """
+    Check whether pixel coordinates lie within the detector image bounds.
+
+    Parameters
+    ----------
+    u, v : float or array_like
+        Pixel coordinates. Can be scalars or arrays of same broadcastable shape.
+    shape : (H, W)
+        Detector image shape in pixels.
+
+    Returns
+    -------
+    valid : bool or ndarray of bool
+        True where 0 <= u < W and 0 <= v < H.
+    """
     H, W = shape
     return (u >= 0) & (u < W) & (v >= 0) & (v < H)
 
-def ray_to_pixel(ray_dir, pose: DetectorPose, detector: Detector):
+def ray_to_pixel(
+    ray_dir: NDArray, 
+    pose: DetectorPose, 
+    detector: Detector
+) -> NDArray:
+    """
+    Project ray direction(s) to detector pixel coordinates.
+
+    Reference frames
+    ----------------
+    - `ray_dir` is in the **lab frame** (origin at sample).
+    - Detector plane is defined by `pose.det_norm` and the PONI point:
+        p_poni = pose.distance * unit(pose.det_dir)
+    - Detector axes (ex, ey) are derived from (det_norm, spin) and are expressed in **lab frame**.
+    - `pose.poni = (poni_x, poni_y)` is in the **detector frame** (meters).
+
+    Pixel mapping
+    -------------
+    Pixel origin (u=0,v=0) corresponds to a point p00 in lab:
+        p00 = p_poni - poni_x * ex - poni_y * ey
+
+    For an intersection point P on the plane:
+        x = (P - p00)·ex   [meters]
+        y = (P - p00)·ey   [meters]
+        u = x / pixelsize_x
+        v = y / pixelsize_y
+
+    Parameters
+    ----------
+    ray_dir : (3,) or (N,3) array_like
+        Ray direction(s) in lab frame.
+    pose : DetectorPose
+        Detector pose definition.
+    detector : Detector
+        Detector metadata (pixelsize, shape).
+
+    Returns
+    -------
+    uv : (2,) or (N,2) ndarray
+        Pixel coordinates (u, v). Rays that are either:
+          - near-parallel to the plane (|d·n| < eps), or
+          - whose (u,v) fall outside `detector.shape`
+        are returned as NaNs.
+    """
     ray_dir = np.asarray(ray_dir, dtype=float)
     
     single_ray = ray_dir.ndim == 1
@@ -74,7 +229,7 @@ def ray_to_pixel(ray_dir, pose: DetectorPose, detector: Detector):
     x = np.sum((P - p00) * ex, axis=-1)
     y = np.sum((P - p00) * ey, axis=-1)
     
-    px_s = detector.pixelsize
+    px_s = vec2(detector.pixelsize)
     
     u = x / px_s[0]
     v = y / px_s[1]
