@@ -13,7 +13,13 @@ authors = [
   {name = "Your Name", email = "you@example.com"}
 ]
 dependencies = [
-  "numpy",
-  "pandas",
-  "numba",
+  "numpy"
 ]
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-q"

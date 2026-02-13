@@ -57,11 +57,11 @@ class Detector:
         return self.shape[1]
 
     @property
-    def size(self) -> tuple[float, float]:
+    def size(self) -> np.ndarray:
         """Physical size (height, width) in meters."""
         py, px = self.pixelsize
         ny, nx = self.shape
-        return (float(ny * py), float(nx * px))
+        return np.array([ny * py, nx * px])
     
     @property
     def diameter(self) -> float:
