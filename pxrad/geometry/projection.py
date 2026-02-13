@@ -100,9 +100,14 @@ def intersection_ray_detector(
     # To extent dot product to batches, it is computed using np.sum
     den = np.sum(d * n, axis=-1)
     
-    t = num / den
-    # Where the ray is almost parallel to the detector, give nan
-    t = np.where(np.abs(den) < eps, np.nan, t)
+    # Avoid doing the division where the denominator is close to 0
+    # and when the solution is found in a direction opposite the one
+    # of the detector.
+    t = np.full_like(den, np.nan, dtype=float)
+    # Given our convention n \cdot d is always negative. So I do the
+    # division only when the denominator is negative (and in magnitude)
+    # larger than eps
+    np.divide(num, den, out=t, where=den < -eps)
     
     return d * t[..., None] # result is in [m]
 
