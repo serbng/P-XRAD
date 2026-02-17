@@ -2,11 +2,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum, auto
-from typing import Tuple, Optional
+from typing import Tuple, Optional, Dict, Any
+
 import numpy as np
 from numpy.typing import NDArray
 
 from pxrad.utils.linalg import vec3, unit
+from pxrad.io import dump_yaml, load_yaml
 
 Vec3 = NDArray[np.floating] # shape (3,)
 
@@ -278,3 +280,35 @@ class Geometry:
             f"\n    x_hat={self.frame.x_hat.tolist()},"
             f"\n    y_hat={self.frame.y_hat.tolist()}\n)"
         )
+    
+    def to_dict(self) -> Dict[str, Any]:
+        d: Dict[str, Any] = {
+            "mode": self.mode.name,
+            "frame": self.frame.as_matrix().tolist(),
+            "det_dir": self.det_dir.tolist(),
+            "beam_dir": self.beam_dir.tolist(),
+        }
+        return d
+    
+    @classmethod
+    def from_dict(cls, d: Dict[str, Any]) -> "Geometry":
+        mode = GeometryMode[str(d["mode"])]
+        beam_dir = np.asarray(d.get("beam_dir", LAB_FRAME.z_hat), dtype=float)
+
+        if mode is GeometryMode.CUSTOM:
+            det_dir = np.asarray(d["det_dir"], dtype=float)
+            return cls(mode=mode, beam_dir=beam_dir, det_dir=det_dir)
+        else:
+            return cls(mode=mode, beam_dir=beam_dir)
+        
+    def to_yaml(self, path: str) -> None:
+        dump_yaml({"geometry": self.to_dict()}, path)
+        
+    @classmethod
+    def from_yaml(cls, path: str) -> "Geometry":
+        d = load_yaml(path)
+        try:
+            return cls.from_dict(d["geometry"])
+        except KeyError as e:
+            raise KeyError("The specified YAML file does not contain a field called 'geometry'") from e    
+        

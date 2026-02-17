@@ -1,10 +1,11 @@
 from __future__ import annotations
 from dataclasses import dataclass
-from typing import Tuple, Union
+from typing import Tuple, Dict, Any
 import numpy as np
 from numpy.typing import ArrayLike, NDArray, DTypeLike
 
 from pxrad.utils.linalg import vec2, ensure_finite
+from pxrad.io import dump_yaml, load_yaml
 
 Vec2 = NDArray[np.floating] # shape (2,)
 
@@ -121,3 +122,36 @@ class Detector:
         circumradius of the bounding rectangle (half-diagonal).
         """
         return 0.5 * self.diagonal
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """
+        YAML/JSON-friendly representation.
+        """
+        return {
+            "name": self.name,
+            "shape": [int(self.shape[0]), int(self.shape[1])],
+            "pixelsize": [float(self.pixelsize[0]), float(self.pixelsize[1])],
+            "encoding": str(np.dtype(self.encoding)),
+            "file_extension": str(self.file_extension),
+        }
+
+    @classmethod
+    def from_dict(cls, d: Dict[str, Any]) -> "Detector":
+        return cls(
+            name=str(d["name"]),
+            shape=(int(d["shape"][0]), int(d["shape"][1])),
+            pixelsize=(float(d["pixelsize"][0]), float(d["pixelsize"][1])),
+            encoding=str(d["encoding"]),
+            file_extension=str(d["file_extension"]),
+        )
+
+    def to_yaml(self, path: str) -> None:
+        dump_yaml({"detector": self.to_dict()}, path)
+
+    @classmethod
+    def from_yaml(cls, path: str) -> "Detector":
+        d = load_yaml(path)
+        try:
+            return cls.from_dict(d["detector"])
+        except KeyError as e:
+            raise KeyError("The specified YAML file does not contain a field called 'detector'") from e  

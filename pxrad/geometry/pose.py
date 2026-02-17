@@ -1,10 +1,12 @@
 from dataclasses import dataclass
+from typing import Dict, Any
 import numpy as np
 from numpy.typing import NDArray
 
 from pxrad.utils.linalg import vec2, vec3, unit
 from pxrad.geometry.frames import Geometry
 from pxrad.detectors.detector import Detector
+from pxrad.io import dump_yaml, load_yaml
 
 Vec3 = NDArray[np.floating] # intended shape (3,)
 Vec2 = NDArray[np.floating] # intended shape (2,)
@@ -43,7 +45,14 @@ class DetectorPose:
     det_norm: Vec3 
     distance: float
     spin: float    
-    poni: Vec2    
+    poni: Vec2
+    
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "det_dir", unit(vec3(self.det_dir)))
+        object.__setattr__(self, "det_norm", unit(vec3(self.det_norm)))
+        object.__setattr__(self, "poni", vec2(self.poni))
+        object.__setattr__(self, "distance", float(self.distance))
+        object.__setattr__(self, "spin", float(self.spin))   
     
     def poni_lab_frame(self) -> Vec3:
         return vec3(self.distance * unit(self.det_dir))
@@ -105,3 +114,35 @@ class DetectorPose:
             spin = spin,
             poni = detector.size / 2.0
         )
+        
+    def to_dict(self) -> Dict[str, Any]:
+        d: Dict[str, Any] = {
+            "det_dir": self.det_dir.tolist(),
+            "det_norm": self.det_norm.tolist(),
+            "distance": float(self.distance),
+            "spin": float(self.spin),
+            "poni": self.poni.tolist(),
+        }
+        return d
+
+    @classmethod
+    def from_dict(cls, d: Dict[str, Any]) -> "DetectorPose":
+        return cls(
+            det_dir=np.asarray(d["det_dir"], dtype=float),
+            det_norm=np.asarray(d["det_norm"], dtype=float),
+            distance=float(d["distance"]),
+            spin=float(d["spin"]),
+            poni=np.asarray(d["poni"], dtype=float),
+        )
+        
+    def to_yaml(self, path: str) -> None:
+        dump_yaml({"detectorpose": self.to_dict()}, path)
+        
+    @classmethod
+    def from_yaml(cls, path: str) -> "DetectorPose":
+        d = load_yaml(path)
+        try:
+            return cls.from_dict(d["detectorpose"])
+        except KeyError as e:
+            raise KeyError("The specified YAML file does not contain a field called 'detectorpose'") from e    
+        
