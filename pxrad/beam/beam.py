@@ -8,8 +8,7 @@ import numpy as np
 from numpy.typing import NDArray
 
 from pxrad.utils.units import energy_keV_to_wavelength_A
-
-ArrayF = NDArray[np.floating]
+from pxrad.utils.types import FloatArray
 
 # --- Beam interface ----------------------------------------------------------
 class Beam(ABC):
@@ -39,7 +38,7 @@ class Beam(ABC):
         lambda_max = float(energy_keV_to_wavelength_A(emin))
         return lambda_min, lambda_max
     
-    def spectrum(self, E_keV: ArrayF) -> ArrayF:
+    def spectrum(self, E_keV: FloatArray) -> FloatArray:
         """
         Spectral weight (relative) as a function of energy.
         Default: flat spectrum (white beam).
@@ -89,8 +88,8 @@ class TabulatedBeam(Beam):
         Non-negative spectral weights (arbitrary units).
         You can normalize externally or via `normalize=True` in from_xy().
     """
-    E_keV: ArrayF
-    S: ArrayF
+    E_keV: FloatArray
+    S: FloatArray
 
     def __post_init__(self) -> None:
         E = np.asarray(self.E_keV, dtype=float)
@@ -118,7 +117,7 @@ class TabulatedBeam(Beam):
         E = self.E_keV
         return float(E[0]), float(E[-1])
 
-    def spectrum(self, E_keV: ArrayF) -> ArrayF:
+    def spectrum(self, E_keV: FloatArray) -> FloatArray:
         """
         Linear interpolation of S(E). Outside the tabulated range -> 0.
         """
@@ -131,8 +130,8 @@ class TabulatedBeam(Beam):
     @classmethod
     def from_xy(
         cls,
-        E_keV: ArrayF,
-        S: ArrayF,
+        E_keV: FloatArray,
+        S: FloatArray,
         *,
         normalize: bool = False,
         eps: float = 0.0,
