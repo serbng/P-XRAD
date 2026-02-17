@@ -2,12 +2,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Tuple, Dict, Any
 import numpy as np
-from numpy.typing import ArrayLike, NDArray, DTypeLike
 
 from pxrad.utils.linalg import vec2, ensure_finite
+from pxrad.utils.types import Vec2, ArrayLike, DTypeLike
 from pxrad.io import dump_yaml, load_yaml
 
-Vec2 = NDArray[np.floating] # shape (2,)
 
 @dataclass(frozen=True, slots=True)
 class Detector:

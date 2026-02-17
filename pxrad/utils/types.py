@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import numpy as np
-from numpy.typing import NDArray, ArrayLike
+from numpy.typing import NDArray, ArrayLike, DTypeLike
 
 FloatArray = NDArray[np.floating]
 IntArray   = NDArray[np.integer]

@@ -2,14 +2,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Tuple
 import numpy as np
-from numpy.typing import NDArray
 
 from pxrad.detectors.detector import Detector
 from pxrad.geometry.pose import DetectorPose
 from pxrad.utils.linalg import vec2, vec3, unit
-
-Vec3 = NDArray[np.floating] # intended shape (3,)
-Vec2 = NDArray[np.floating] # intended shape (2,)
+from pxrad.utils.types import Vec3, NDArray
     
 def det_basis_from_norm_spin(
     det_norm: Vec3, 

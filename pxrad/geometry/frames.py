@@ -5,12 +5,10 @@ from enum import Enum, auto
 from typing import Tuple, Optional, Dict, Any
 
 import numpy as np
-from numpy.typing import NDArray
 
 from pxrad.utils.linalg import vec3, unit
+from pxrad.utils.types import Vec3, Mat33
 from pxrad.io import dump_yaml, load_yaml
-
-Vec3 = NDArray[np.floating] # shape (3,)
 
 class GeometryMode(Enum):
     """
@@ -123,7 +121,7 @@ class LabFrame:
         x, y, z = ensure_right_handed(z_hat=z_hat, x_hint=x_hint)
         return cls(x_hat=x, y_hat=y, z_hat=z)
     
-    def as_matrix(self) -> NDArray:
+    def as_matrix(self) -> Mat33:
         """
         Return the 3x3 basis matrix with columns [x_hat, y_hat, z_hat].
 

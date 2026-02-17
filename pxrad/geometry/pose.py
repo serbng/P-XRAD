@@ -1,15 +1,12 @@
 from dataclasses import dataclass
 from typing import Dict, Any
 import numpy as np
-from numpy.typing import NDArray
 
 from pxrad.utils.linalg import vec2, vec3, unit
+from pxrad.utils.types import Vec2, Vec3
 from pxrad.geometry.frames import Geometry
 from pxrad.detectors.detector import Detector
 from pxrad.io import dump_yaml, load_yaml
-
-Vec3 = NDArray[np.floating] # intended shape (3,)
-Vec2 = NDArray[np.floating] # intended shape (2,)
 
 
 @dataclass(frozen=True)
