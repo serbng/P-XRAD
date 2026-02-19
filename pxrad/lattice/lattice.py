@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import numpy as np
 
 from pxrad.utils.types import FloatArray, IntArray
@@ -34,6 +34,11 @@ class Lattice:
     alpha: float  # degrees
     beta: float   # degrees
     gamma: float  # degrees
+    
+    # Will be computed in __post_init__
+    _A: FloatArray = field(init=False, repr=False)
+    _B: FloatArray = field(init=False, repr=False)
+    _volume_A3: float = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
         a, b, c = float(self.a), float(self.b), float(self.c)
