@@ -109,7 +109,7 @@ class DetectorPose:
             det_norm = -geometry.det_dir, # the detector faces perfectly the sample
             distance = distance,
             spin = spin,
-            poni = (detector.px / 2.0, detector.p / 2.0)
+            poni = (detector.px / 2.0, detector.py / 2.0)
         )
         
     def to_dict(self) -> Dict[str, Any]:
