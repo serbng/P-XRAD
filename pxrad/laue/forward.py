@@ -45,7 +45,7 @@ class LaueForwardResult:
     - lambda_A: (N,) wavelength in Å
     - E_keV: (N,) photon energy in keV
     - uf: (N,3) outgoing ray directions (unit) in lab frame
-    - angles: (N,3) (two_theta, chi, two_theta_scattering) from pxrad.geometry.scattering
+    - angles: (N,2) (two_theta, chi) from pxrad.geometry.scattering
     - uv: (N,2) detector pixel coords; NaN if not on detector / invalid
     - on_detector: (N,) True where uv is finite (both coords)
     """
@@ -67,7 +67,7 @@ def _empty_laue_result(rotation_matrix):
             lambda_A    = np.empty((0,), dtype=float),
             E_keV       = np.empty((0,), dtype=float),
             uf          = np.empty((0, 3), dtype=float),
-            angles      = np.empty((0, 3), dtype=float),
+            angles      = np.empty((0, 2), dtype=float),
             uv          = np.empty((0, 2), dtype=float),
             on_detector = np.empty((0,), dtype=bool),
         )
@@ -90,32 +90,98 @@ def forward_laue(
     """
     Forward-simulate Laue spot positions for a fixed crystal orientation.
 
-    Physics model (NO 2π, consistent with pxrad.lattice):
-    - G_crys = B @ hkl            (Å^-1) in crystal frame
-    - G_lab  = R @ G_crys         (Å^-1)
-    - Laue + elastic conditions give a unique wavelength:
-          lambda = -2 (u·G_lab) / ||G_lab||^2
-      where u = geometry.beam_dir is unit vector (source -> sample).
-      Physical solutions require lambda > 0  (equivalently u·G_lab < 0).
-    - Energy: E_keV = HC_KEV_A / lambda_A
-    - Outgoing ray direction (unit):
-          uf ~ u + lambda * G_lab
-      (renormalized for numerical safety)
-    - Projection: uv = ray_to_pixel(uf, pose, detector)  (NaNs if outside)
+    This function computes, for each candidate reflection (h,k,l), the unique wavelength
+    (and energy) that satisfies the Laue condition for the given crystal orientation and
+    incident beam direction, then projects the outgoing rays onto the detector.
+
+    Physics model (no 2π convention)
+    --------------------------------
+    The reciprocal basis follows pxrad.lattice conventions: ``B = inv(A).T`` (NO 2π),
+    so reciprocal vectors have units of Å⁻¹.
+
+    For Miller indices ``hkl``:
+      - Reciprocal vector in crystal frame:
+            G_crys = B @ hkl                      (Å⁻¹)
+      - Rotate to lab:
+            G_lab = R @ G_crys                    (Å⁻¹)
+      - Let ``u_i`` be the incident beam direction in the lab frame (unit vector).
+        The Laue + elastic condition yields a unique wavelength:
+            lambda_A = -2 * (u_i · G_lab) / ||G_lab||²     (Å)
+        Physical solutions require ``lambda_A > 0`` (equivalently ``u_i·G_lab < 0``).
+      - Photon energy:
+            E_keV = HC_KEV_A / lambda_A
+      - Outgoing ray direction (unit vector in lab frame):
+            u_f ∝ u_i + lambda_A * G_lab
+        (renormalized for numerical safety)
+
+    Projection
+    ----------
+    Outgoing rays are projected onto the detector using ``pxrad.geometry.projection.ray_to_pixel``.
+    Rays outside the detector (or invalid geometry) yield NaN pixel coordinates.
+
+    Angle conventions (important)
+    -----------------------------
+    If ``compute_angles=True``, angles are computed via ``pxrad.geometry.scattering.scattering_angles``:
+      - ``two_theta`` is the *scattering angle* between incident and outgoing directions:
+            two_theta = arccos(u_f · u_i)
+        This matches the common "2θ" reported by LaueTools for spot geometry (what you observed
+        as LaueTools' ``two_theta``).
+      - ``chi`` is the azimuthal angle of the outgoing ray around the beam axis in a beam-aligned basis.
+
+    Orientation matrix convention (LaueTools note)
+    ----------------------------------------------
+    Here ``R`` is the rotation that maps vectors from the *crystal frame* to the *lab frame*.
+    Many LaueTools routines use the inverse mapping (lab → crystal). For a pure rotation matrix:
+        R_pxrad = inv(R_LT) = R_LT.T
 
     Filtering
     ---------
-    Optional filters (enabled by default where sensible):
-    - extinctions: material.is_allowed(hkl)
-    - physical lambda: finite and > 0 (always applied)
-    - beam energy range: Emin <= E <= Emax
-    - on-detector: finite uv
+    The following filters can be applied:
+      - Extinctions (systematic absences): ``material.is_allowed(hkl)`` if ``filter_extinctions=True``.
+      - Physical Laue solutions: finite ``lambda_A`` and ``lambda_A > 0`` (always applied).
+      - Beam energy window: ``Emin <= E_keV <= Emax`` if ``filter_energy_range=True``.
+      - On-detector: finite ``uv`` if ``filter_on_detector=True``.
+
+    Parameters
+    ----------
+    material:
+        Material providing the reciprocal basis (via lattice) and extinction rules.
+    R:
+        (3,3) rotation matrix mapping crystal → lab.
+    geometry:
+        Experimental geometry in the fixed lab frame. Uses ``geometry.beam_dir`` as incident direction.
+    pose:
+        Detector pose (position/orientation) in the lab frame.
+    beam:
+        Beam model providing the energy range in keV (used for filtering if enabled).
+    detector:
+        Detector description (shape, pixel size, etc.) used by the projection model.
+    hkls:
+        (N,3) integer array of candidate Miller indices (e.g. from ``pxrad.laue.hkl.generate_hkls``).
+    filter_extinctions:
+        If True, remove reflections forbidden by ``material.is_allowed``.
+    filter_energy_range:
+        If True, keep only reflections with energies inside ``beam.energy_range_keV``.
+    filter_on_detector:
+        If True, keep only reflections that project onto the detector (finite ``uv``).
+        If False, returned ``uv`` may contain NaNs and ``on_detector`` marks valid hits.
+    compute_angles:
+        If True, compute and return angles (two_theta, chi) for each retained reflection.
+    eps:
+        Numerical threshold used to detect degenerate vectors and avoid division by zero.
 
     Returns
     -------
     LaueForwardResult
-        If filter_on_detector=True, arrays are already reduced to only valid spots.
-        Otherwise, uv may contain NaNs and on_detector marks which ones are valid.
+        Dataclass containing arrays for the retained reflections:
+        ``hkl, G_lab, lambda_A, E_keV, uf, angles, uv, on_detector``.
+        If ``filter_on_detector=True``, all returned reflections are guaranteed on the detector.
+
+    Notes
+    -----
+    - This is a *positions-only* forward simulation: intensities are not modeled here.
+    - For repeated simulations at many orientations, precompute ``hkls`` once and reuse it
+      (and potentially cache ``material.G(hkls)``) to reduce overhead.
     """
     hkls = np.asarray(hkls)
     if hkls.ndim != 2 or hkls.shape[1] != 3:
@@ -156,9 +222,9 @@ def forward_laue(
     # Solve lambda (Å): lambda = -2 (u·G) / ||G||^2
     ug = G_lab @ ui # (N,)
     g2 = np.einsum("ni,ni->n", G_lab, G_lab)
-
-    denom = np.where(g2 > eps, g2, np.nan)
-    lambda_A = -2.0 * ug / denom
+    g2 = np.where(g2 > eps, g2, np.nan)
+    
+    lambda_A = -2.0 * ug / g2
 
     # Physical solutions: finite and > 0
     physical = np.isfinite(lambda_A) & (lambda_A > 0.0)
@@ -185,17 +251,15 @@ def forward_laue(
 
     # Project to detector (NaNs for outside)
     uv = ray_to_pixel(uf, pose=pose, detector=detector)
-
-    on_det = np.isfinite(uv).all(axis=1)
+    # Remove NaNs, that mean "bad direction" or "out of detector"
+    on_det = np.isfinite(uv).all(axis=1) & np.isfinite(uv).all(axis=1)
 
     # Angles (optional)
     if compute_angles:
-        two_theta, chi, two_theta_scatt = scattering_angles(
-            uf, beam_dir=ui, degrees=True, eps=eps
-        )
-        angles = np.stack([two_theta, chi, two_theta_scatt], axis=1)
+        two_theta, chi = scattering_angles(uf, beam_dir=ui, degrees=True, eps=eps)
+        angles = np.stack([two_theta, chi], axis=1)
     else:
-        angles = np.full((uf.shape[0], 3), np.nan, dtype=float)
+        angles = np.full((uf.shape[0], 2), np.nan, dtype=float)
 
     if filter_on_detector:
         m = on_det
@@ -219,7 +283,6 @@ def forward_laue(
         uv       = uv,
         on_detector = on_det,
     )
-    
 
 def simulate_laue(
     material: Material,
@@ -237,7 +300,50 @@ def simulate_laue(
     filter_on_detector: bool = True,
     compute_angles: bool = True,
 ) -> LaueForwardResult:
-    
+    """
+    Convenience wrapper to simulate a Laue pattern (generate HKLs + forward project).
+
+    This function first generates a finite set of candidate reflections using
+    ``pxrad.laue.hkl.generate_hkls`` and then calls ``forward_laue`` to compute
+    energies, outgoing directions, and detector positions.
+
+    HKL generation
+    --------------
+    Candidate HKLs are generated by applying:
+        - a d-spacing cutoff (either provided via ``dmin_A`` or derived conservatively
+        from the beam maximum energy),
+        - extinction rules from the material,
+        - removal of (0,0,0),
+        - optional inclusion of negative indices.
+
+    Use this wrapper for convenience. For high-throughput use (many orientations),
+    prefer calling ``generate_hkls`` once and reusing the result with ``forward_laue``.
+
+    Parameters
+    ----------
+    material, R, geometry, pose, beam, detector:
+        Passed through to ``forward_laue`` (see its docstring for details).
+    dmin_A:
+        Minimum d-spacing (Å) used to generate candidate HKLs. If None, it is computed
+        from the beam energy range via ``dmin = lambda_min/2``.
+    nmax:
+        Optional explicit search radius in index space for HKL generation. If None, it is
+        estimated conservatively from ``material`` and ``dmin_A``.
+    include_negatives:
+        If True, generate both positive and negative HKLs (recommended for Laue).
+    filter_extinctions, filter_energy_range, filter_on_detector, compute_angles:
+        Passed to ``forward_laue``.
+
+    Returns
+    -------
+    LaueForwardResult
+        Same output as ``forward_laue`` for the generated candidate HKLs.
+
+    See Also
+    --------
+    pxrad.laue.hkl.generate_hkls
+    pxrad.laue.forward.forward_laue
+    """
     hkls = generate_hkls(
         material,
         beam=beam,
@@ -245,6 +351,7 @@ def simulate_laue(
         nmax=nmax,
         include_negatives=include_negatives,
     )
+    
     return forward_laue(
         material=material,
         R=R,

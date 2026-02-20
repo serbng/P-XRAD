@@ -20,9 +20,9 @@ _PRESETS: Dict[str, Material] = {
     "Si": Material(
         name="Si",
         lattice=Lattice(
-            a=5.431020511, 
-            b=5.431020511, 
-            c=5.431020511,
+            a=5.4309, 
+            b=5.4309, 
+            c=5.4309,
             alpha=90.0, 
             beta=90.0, 
             gamma=90.0
@@ -33,9 +33,9 @@ _PRESETS: Dict[str, Material] = {
     "Ge": Material(
         name="Ge",
         lattice=Lattice(
-            a=5.658, 
-            b=5.658, 
-            c=5.658,
+            a=5.6575, 
+            b=5.6575, 
+            c=5.6575,
             alpha=90.0, 
             beta=90.0, 
             gamma=90.0
