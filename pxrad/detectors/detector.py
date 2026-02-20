@@ -97,6 +97,14 @@ class Detector:
         return np.array([ny * py, nx * px])
     
     @property
+    def py(self) -> float:
+        return self.pixelsize[0]
+    
+    @property
+    def px(self) -> float:
+        return self.pixelsize[1]
+    
+    @property
     def diagonal(self) -> float:
         """
         Physical diagonal length in meters.

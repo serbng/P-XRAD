@@ -195,8 +195,9 @@ def ray_to_pixel(
     
     px_s = vec2(detector.pixelsize)
     
-    u = x / px_s[0]
-    v = y / px_s[1]
+    # Remember that pixelsize = (py, px)
+    u = x / px_s[1]
+    v = y / px_s[0]
     
     uv = np.stack((u, v), axis=-1)
     

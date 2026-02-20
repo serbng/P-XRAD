@@ -122,9 +122,9 @@ def scattering_angles(
     # For numerical safety
     uf_z = np.clip(uf_z, -1.0, 1.0)
     
-    #two_theta_xz = np.arctan2(np.abs(uf_x), uf_z) # diffractometer-like 2theta
+    #theta_xz = np.arctan2(np.abs(uf_x), uf_z) # diffractometer-like theta
     chi       = np.arctan2(uf_y, uf_x) # diffractometer-like chi
-    two_theta = np.arccos(uf_z)        # real scattering angle
+    two_theta = np.arccos(uf_z)        # Bragg scattering angle
     
     if degrees:
         two_theta = np.degrees(two_theta)
