@@ -21,8 +21,8 @@ def _dmin_from_beam(beam: Beam) -> float:
     so the minimum possible d-spacing that can diffract is:
         dmin = lambda_min / 2
     """
-    lam_min_A, _lam_max_A = beam.wavelength_range_A
-    return 0.5 * float(lam_min_A)
+    lambda_min_A, _lambda_max_A = beam.wavelength_range_A
+    return 0.5 * float(lambda_min_A)
 
 
 def estimate_hkl_radius(material: Material, dmin_A: float) -> int:
